@@ -1,0 +1,423 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+
+game = pd.read_csv("Athena_survey_data.csv")
+
+! pip install factor_analyzer
+from factor_analyzer import calculate_bartlett_sphericity
+
+----------------------------------------------------------------------------------------------------------------------------------------
+
+FACTOR SCORES
+
+# Step 1: Evaluate the data
+# Bartlett's Test of Sphericity (we want p < 0.05 to go ahead)
+from factor_analyzer.factor_analyzer import calculate_bartlett_sphericity
+chi_square_value, p_value = calculate_bartlett_sphericity(game.iloc[:, 4:44])
+print(f"Bartlett's Test of Sphericity p-value: {p_value}")
+
+# KMO-test (we want overall MSA > 0.6 to go ahead)
+from factor_analyzer.factor_analyzer import calculate_kmo
+kmo_all, kmo_model = calculate_kmo(game.iloc[:, 4:44])
+print(f"KMO-test overall MSA: {kmo_model}")
+
+# Step 2: Determine the number of factors
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+
+# Standardize the features (important for PCA)
+scaler = StandardScaler()
+game_scaled = scaler.fit_transform(game.iloc[:, 4:44])
+
+# Create and fit the PCA model
+pca = PCA()
+pca.fit(game_scaled)
+
+# Get the explained variance ratios
+explained_variance_ratios = pca.explained_variance_ratio_
+
+# Cumulative explained variance
+cumulative_explained_variance = explained_variance_ratios.cumsum()
+
+# Plot the explained variance ratios, want the factors to explain
+# very roughly 70% or more of the variance
+plt.plot(range(1, len(explained_variance_ratios) + 1), \
+         cumulative_explained_variance, marker='o')
+plt.title('Cumulative Explained Variance')
+plt.xlabel('Number of Principal Components')
+plt.ylabel('Cumulative Explained Variance')
+plt.show()
+
+pca.explained_variance_ # eigenvalues; want values > 1
+
+# Step 3: Extract the factor solution (with varimax rotation)
+
+from factor_analyzer import Rotator
+from sklearn.decomposition import FactorAnalysis
+
+rotator = Rotator()
+
+fa = FactorAnalysis(n_components=10)
+fa.fit(game_scaled)
+rotated_loading = rotator.fit_transform(fa.components_.T)
+
+print("Rotated Factor Loadings:")
+pd.DataFrame(rotated_loading, columns=['Factor 1', 'Factor 2', 'Factor 3', 'Factor 4', 'Factor 5', 'Factor 6', 'Factor 7','Factor 8', 'Factor 9', 'Factor 10'], index=game.columns[4:44])
+
+# Step 4: Create and name the factor scores
+factor_scores = fa.transform(game_scaled)
+game['Imaginative Roleplay'] = factor_scores[:, 0]
+game['Complete Plots'] = factor_scores[:, 1]
+game['Mastery Practice'] = factor_scores[:, 2]
+game['Rich Storyline'] = factor_scores[:, 3]
+game['Destructions'] = factor_scores[:, 4]
+game['Difficulty Mastery'] = factor_scores[:, 5]
+game['Item Collections'] = factor_scores[:, 6]
+game['Violent Actions'] = factor_scores[:, 7]
+game['Customized Characters'] = factor_scores[:, 8]
+game['Team Efforts'] = factor_scores[:, 9]
+game
+
+# Step 5: Retrieve the newly-created factor scores
+game.iloc[:, 52:62]
+
+----------------------------------------------------------------------------------------------------------------------------------------
+
+CLUSTER ANALYSIS
+
+# Step 1: determine the number of clusters
+# Option A: dendogram
+from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import linkage, dendrogram
+dissimilarity_matrix = squareform(pdist(game.iloc[:, 52:62], metric='euclidean'))
+
+# perform hierarchical clustering using Ward's method on this matrix
+hc = linkage(dissimilarity_matrix, method="ward")
+
+# plot the resulting dendrogram
+dendrogram(hc, leaf_font_size=6)
+plt.axhline(y = 150, color = 'red', alpha = 0.5)
+plt.show()
+
+# Option B: The Elbow
+from sklearn.cluster import KMeans
+
+# Calculate the sum of squared distances for different values of k
+sum_of_squared_distances = []
+K_range = range(1, 11)  # You can adjust this range based on your problem
+for k in K_range:
+    kmeans = KMeans(n_clusters=k, n_init='auto')
+    kmeans.fit(game.iloc[:, 52:62])
+    sum_of_squared_distances.append(kmeans.inertia_)
+
+# Plot the Elbow curve
+plt.plot(K_range, sum_of_squared_distances, marker='o')
+plt.title('Elbow Method For Optimal k')
+plt.xlabel('Number of Clusters (k)')
+plt.ylabel('Sum of Squared Distances')
+plt.show()
+
+# Step 2: Calculate the final cluster solution
+kmeans = KMeans(n_clusters=5, random_state=30, n_init='auto')
+
+# Add a new column with cluster assignment for each person
+game['Cluster'] = kmeans.fit_predict(game.iloc[:, 52:62])
+
+# Step 3: Interpret the K-means output
+print("Cluster Centers:")
+pd.DataFrame(kmeans.cluster_centers_, columns=game.columns[52:62], \
+             index=['Cluster 0', 'Cluster 1', 'Cluster 2', 'Cluster 3', 'Cluster 4'], )
+
+# Visualize K-means clusters1
+import seaborn as sns
+
+sns.scatterplot(data=game, x='Imaginative Roleplay', y='Complete Plots', hue='Cluster', palette='viridis')
+plt.show()
+
+# Visualize K-means clusters2
+sns.scatterplot(data=game, x='Mastery Practice', y='Rich Storyline', hue='Cluster', palette='viridis')
+plt.show()
+
+# Visualize K-means clusters3
+sns.scatterplot(data=game, x='Destructions', y='Difficulty Mastery', hue='Cluster', palette='viridis')
+plt.show()
+
+# Visualize K-means clusters4
+sns.scatterplot(data=game, x='Item Collections', y='Violent Actions', hue='Cluster', palette='viridis')
+plt.show()
+
+# Visualize K-means clusters5
+sns.scatterplot(data=game, x='Customized Characters', y='Team Efforts', hue='Cluster', palette='viridis')
+plt.show()
+
+# Name the clusters based on k-mean outputs
+print("Cluster Centers:")
+pd.DataFrame(kmeans.cluster_centers_, columns=game.columns[52:62],
+             index=['Cluster 0: Perfectionist Gamer', 'Cluster 1: Story Lover', 'Cluster 2: Skillful Player', 'Cluster 3: Creative Dreamer', 'Cluster 4: Full-story Experiencer'], )
+
+game['Segment'] = game['Cluster'].replace({0: 'Perfectionist Gamer', 1: 'Story Lover', 2: 'Skillful Player', 3: 'Creative Dreamer', 4: 'Full-story Experiencer'})
+
+from scipy.stats import chi2_contingency
+
+
+game['Cluster'] = game['Cluster'].replace({0: 'Cluster 0: Perfectionist Gamer', 1: 'Cluster 1: Story Lover', 2: 'Cluster 2: Skillful Player', 3: 'Cluster 3: Creative Dreamer', 4: 'Cluster 4: Full-story Experiencer'})
+
+def xtab(d1, d2):
+    crosstab = pd.crosstab(index=d1, columns=d2)
+    chi2, p, _, expected = chi2_contingency(crosstab)
+    contributions = (crosstab - expected) ** 2 / expected
+
+    # Create a multi-index DataFrame
+    index = pd.MultiIndex.from_product([crosstab.index, ['Observed', 'Expected', 'Chi squared']])
+    columns = pd.MultiIndex.from_product([crosstab.columns])
+
+# define user segmentation function1
+    df = pd.DataFrame(index=index, columns=columns)
+
+    # Fill in the DataFrame
+    df.loc[crosstab.index, 'Observed', :] = crosstab.values
+    df.loc[crosstab.index, 'Expected', :] = expected.round(2)
+    df.loc[crosstab.index, 'Chi squared', :] = contributions.values.round(2)
+
+    print(f"Chi-squared value: {chi2}")
+    print(f"P-value: {p}")
+    return(df)
+
+# User segmentation based on gender
+xtab(game['gender'], game['Segment'])
+
+# User segmentation based on age
+xtab(game['age'], game['Segment'])
+
+# define user segmentation function2
+def xtab2(d1, d2):
+    crosstab = pd.crosstab(index=d1, columns=d2)
+    chi2, p, _, expected = chi2_contingency(crosstab)
+    contributions = ((crosstab - expected) ** 2 / expected).round(2)
+
+    # Create a multi-index DataFrame
+    index = pd.MultiIndex.from_product([crosstab.index, ['Observed', 'Expected', 'Chi squared']])
+    columns = pd.MultiIndex.from_product([crosstab.columns])
+
+    df = pd.DataFrame(index=index, columns=columns)
+
+    # Fill in the DataFrame
+    df.loc[crosstab.index, 'Observed', :] = crosstab.values
+    df.loc[crosstab.index, 'Expected', :] = expected.round(2)
+    df.loc[crosstab.index, 'Chi squared', :] = contributions.values.round(2)
+
+
+    # Find cells with contributions greater than 3.84 (Chi-square value for p<0.05 with 1 degree of freedom)
+    significant_cells = contributions > 3.84
+    significant_cells_contributions = contributions[significant_cells]
+
+    print(f"Chi-squared value: {chi2}")
+    print(f"P-value: {p}")
+
+    # Return only the significant cells as a DataFrame
+    significant_cells = pd.DataFrame(significant_cells_contributions.stack(), columns=['Chi-squared'])
+    return significant_cells
+
+# User segmentation based on state
+xtab2(game['state'], game['Cluster'])
+
+# User segmentation based on age
+xtab2(game['age'], game['Cluster'])
+
+# User segmentation based on income
+xtab2(game['income'], game['Cluster'])
+
+# User segmentation based on gender
+xtab2(game['gender'], game['Cluster'])
+
+# Building and fitting an Ordinary Least Squares (OLS) regression model for age
+X = pd.get_dummies(game['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = game['age']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+# Building and fitting an Ordinary Least Squares (OLS) regression model for income
+X = pd.get_dummies(game['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = game['income']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+#Building and fitting an Ordinary Least Squares (OLS) regression model for state
+# Fit and transform the `state` column to numeric
+encode_df['state'] = label_encoder.fit_transform(encode_df['state'])
+X = pd.get_dummies(encode_df['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = encode_df['state']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+# Fit and transform the `gender` column to numeric
+encode_df['gender'] = label_encoder.fit_transform(encode_df['gender'])
+X = pd.get_dummies(encode_df['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = encode_df['gender']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+game['female'] = game['gender'].apply(lambda x: 1 if x == 'female' else 0)
+
+# Group by cluster and calculate the mean for numerical demographics
+cluster_means = game.groupby('Cluster')['age', 'income'].mean()
+
+# For categorical variables like female, education or recycle, calculate the mode (most common value)
+cluster_modes = game.groupby('Cluster')['gender', 'state'].agg(pd.Series.mode)
+
+# Merge the means and modes into a single DataFrame
+cluster_profiles = pd.merge(cluster_means, cluster_modes, left_index=True, right_index=True)
+
+cluster_female_percentage = game.groupby('Cluster')['female'].mean() * 100  # convert to percentage
+cluster_profiles['% female'] = cluster_female_percentage
+
+cluster_profiles
+
+# Game 1
+
+evercrest = pd.read_csv('evercrest_price.csv')
+
+cumulative_wtp = pd.DataFrame(columns=['price', 'per_customers_wtp', 'pred_revenue'])
+
+for price in np.arange(min(evercrest['max.price']), max(evercrest['max.price']) + 5, 5):
+    num_respondents_wtp = sum(evercrest['max.price'] >= price)
+    cumulative_wtp = pd.concat([cumulative_wtp, pd.DataFrame({
+        'price': [price],
+        'per_customers_wtp': [num_respondents_wtp / len(evercrest)],
+        'pred_revenue': [num_respondents_wtp * price]
+    })], ignore_index=True)
+cumulative_wtp
+
+# Plot customers willing to pay
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='per_customers_wtp', data=cumulative_wtp, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Percent customers willing to pay')
+plt.title('Customers Willing to Pay vs. Price')
+plt.show()
+
+# Plot revenue
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='pred_revenue', data=cumulative_wtp, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Predicted revenue')
+plt.title('Predicted Revenue vs. Price')
+plt.axvline(x=32, color='red', linestyle='--', alpha=0.5)
+plt.show()
+
+# Game 2
+
+seraph = pd.read_csv('seraph_guardians_price.csv')
+
+cumulative_wtp1 = pd.DataFrame(columns=['price', 'per_customers_wtp', 'pred_revenue'])
+
+for price in np.arange(min(seraph['max.price']), max(seraph['max.price']) + 5, 5):
+    num_respondents_wtp1 = sum(seraph['max.price'] >= price)
+    cumulative_wtp1 = pd.concat([cumulative_wtp1, pd.DataFrame({
+        'price': [price],
+        'per_customers_wtp': [num_respondents_wtp1 / len(seraph)],
+        'pred_revenue': [num_respondents_wtp1 * price]
+    })], ignore_index=True)
+cumulative_wtp1
+
+# Plot customers willing to pay
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='per_customers_wtp', data=cumulative_wtp1, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Percent customers willing to pay')
+plt.title('Customers Willing to Pay vs. Price')
+plt.show()
+
+# Plot revenue
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='pred_revenue', data=cumulative_wtp1, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Predicted revenue')
+plt.title('Predicted Revenue vs. Price')
+plt.axvline(x=35, color='red', linestyle='--', alpha=0.5)
+plt.show()
+
+# Game 3
+
+warrior = pd.read_csv('warrior_guild_price.csv')
+
+cumulative_wtp2 = pd.DataFrame(columns=['price', 'per_customers_wtp', 'pred_revenue'])
+
+for price in np.arange(min(warrior['max.price']), max(warrior['max.price']) + 5, 5):
+    num_respondents_wtp2 = sum(warrior['max.price'] >= price)
+    cumulative_wtp2 = pd.concat([cumulative_wtp2, pd.DataFrame({
+        'price': [price],
+        'per_customers_wtp': [num_respondents_wtp2 / len(warrior)],
+        'pred_revenue': [num_respondents_wtp2 * price]
+    })], ignore_index=True)
+cumulative_wtp2
+
+# Plot customers willing to pay
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='per_customers_wtp', data=cumulative_wtp2, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Percent customers willing to pay')
+plt.title('Customers Willing to Pay vs. Price')
+plt.show()
+
+# Plot revenue
+plt.figure(figsize=(8, 6))
+sns.lineplot(x='price', y='pred_revenue', data=cumulative_wtp2, marker='o')
+plt.xlabel('Price')
+plt.ylabel('Predicted revenue')
+plt.title('Predicted Revenue vs. Price')
+plt.axvline(x=33, color='red', linestyle='--', alpha=0.5)
+plt.show()
+
+# OLS for price willing to pay
+filtered_data = game[game['gg.game.presented'] == 'Warrior Guild']
+X = pd.get_dummies(filtered_data['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = filtered_data['gg.maxprice']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+filtered_data = game[game['gg.game.presented'] == 'Evercrest']
+X = pd.get_dummies(filtered_data['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = filtered_data['gg.maxprice']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+filtered_data = game[game['gg.game.presented'] == 'Seraph Guardians']
+X = pd.get_dummies(filtered_data['Cluster'], drop_first=True, dtype=int)
+X = sm.add_constant(X)
+y = filtered_data['gg.maxprice']
+
+model = sm.OLS(y, X).fit()
+model.summary()
+
+# Estimate market share
+filtered_warrior = game[game['rank.WarriorGuild'] == 1]
+warrior_count = len(filtered_warrior)
+mkt_share_warrior=warrior_count/len(game)
+mkt_share_warrior
+
+filtered_guardians = game.loc[game['rank.SeraphGuardians'] == 1]
+guardians_count = filtered_guardians.shape[0]
+mkt_share_guardians = guardians_count / game.shape[0]
+mkt_share_guardians
+
+filtered_guardians = game.loc[game['rank.SeraphGuardians'] == 1]
+guardians_count = filtered_guardians.shape[0]
+mkt_share_guardians = guardians_count / game.shape[0]
+mkt_share_guardians
