@@ -1,0 +1,156 @@
+Part 1: Manage customer information and update loyalty points.
+
+# Define a customer class with name, phone number, loyalty point attributes 
+# and methods 'add_loyalty_points', 'get_loyalty_points', and 'display_details'
+
+class Customer:
+    def __init__(self,name = '',number=0,loy_point=0): #define attribute(n.)
+        self.name = name #attribute1
+        self.number = number
+        self.loy_point = loy_point #attribute2
+
+    def add_loyalty_points(self,input): #define method(v.)
+        self.loy_point = self.loy_point + input
+    
+    def get_loyalty_points(self):
+        return self.loy_point
+    
+    def display_details(self):
+        return print("Customer Details:\n  " + "Name: " + str(self.name) + "\n  " + "Phone: " + str(self.number) + "\n  " + "Loyalty Points: " + str(self.loy_point) + "\n")
+
+# Check 'display_details' method
+customer = Customer("Bill Barlow", "6612520301", 82)
+customer.display_details()
+
+# Create customer objects for every customer in the file. 
+# Store objects in dictionary with the customers' phone numbers as keys
+
+dic_customer = {} #create dictionary
+
+file = open("customers.csv", "r")
+my_file = file.readlines()
+
+for i in my_file[1:]:
+    i = i.split(',')
+    name = i[0]
+    phone = i[1].strip()
+    customer_instance = Customer(name = name,number=phone,loy_point=0) #(key,value)
+    dic_customer[phone] = customer_instance    
+
+# Read the transaction file and update loyalty points
+
+import math
+
+file_2 = open("transactions.csv", "r")
+new_file = file_2.readlines()
+
+for t in new_file[1:]:
+    t = t.strip().split(",")
+    date = t[0]
+    number = t[1]
+    amount = int(t[2])    
+    customer_object = dic_customer[number]
+    customer_object.add_loyalty_points(math.floor(amount/10)) #ceil round up
+    
+    # print(customer_object.loy_point) 
+
+# Write out customers' phone numbers and current loyalty points
+
+loyal_file = open("loyalty_points.csv", "w")
+loyal_file.write("phone.number,loyalty.points\n")
+for (key,value) in dic_customer.items(): 
+    output = "%s,%d\n"%(key, value.get_loyalty_points())
+    loyal_file.write(output)
+
+loyal_file.close()
+
+------------------------------------------------------------
+
+Part 2: Manage inventory replenishment in a supply chain
+
+# Write inventory class
+class InventoryItem:
+    def __init__(self,id="",title="",inventory=0,point=0,max_quantity=0):
+        self.id=id 
+        self.title=title
+        self.inventory=inventory
+        self.point=point
+        self.max_quantity=max_quantity
+        
+    def fulfill_order(self,quantity):
+        if quantity<=self.inventory:
+            self.inventory=self.inventory-quantity
+            return True
+        else: 
+            return False
+        
+    def restock_check(self):
+        if self.inventory<=self.point:
+            delta=self.max_quantity-self.inventory
+            self.inventory=self.max_quantity
+            
+            return delta
+
+# Use the class defined to created inventory item objects for every item.
+# Store objects in a dictionary with the item ids as keys
+
+import pandas as pd
+
+data=pd.read_csv('initial_inventory.csv',sep=';')
+
+dict_items={}
+
+for i in range(len(data)):
+    id=data.iloc[i,0]
+    title=data.iloc[i,1]
+    inventory=data.iloc[i,2]
+    point=data.iloc[i,3]
+    max_quantity=data.iloc[i,4]
+    item_instance =InventoryItem(id,title,inventory,point,max_quantity)  # key value
+    dict_items[id] = item_instance 
+
+# Read the transactions and update the inventory numbers for items as orders are fulfilled. 
+# Log failed orders and log which items have been restocked at the end of each day in the restocking file. 
+
+trans=pd.read_csv('transactions2.csv')
+
+date_unique=trans['date'].unique()
+
+trans[(trans['item.id']=='B00H2AAXMQ')&(trans['date']=='2023-04-01')].reset_index()
+
+results_restock=[]
+results_failed=[]
+
+for date_time in date_unique:
+    
+    item_trans=trans[(trans['date']==date_time)].reset_index()
+
+    for i1 in range(len(item_trans)):
+        id=item_trans.iloc[i1,2]
+        order=item_trans.iloc[i1,3]
+        j=dict_items[id]
+        v=j.fulfill_order(order)
+        if v==False:
+            list1=[date_time,id,str(order),str(j.inventory)]
+            results_failed.append(list1)
+    for i,j in dict_items.items():
+        v=j.restock_check()
+        if v!=None:
+            list1=[date_time,i,str(v)]
+            results_restock.append(list1)
+
+restock_file = open("restocking_log.csv", "w")
+restock_file.write("date,item.id,order\n")
+for line in results_restock:
+    str1=','.join(line)
+    
+    restock_file.write(str1+'\n')
+restock_file.close()
+
+failed_file = open("failed_orders.csv", "w")
+failed_file.write("date,item.id,desired.quantity,inventory.quantity\n")
+for line in results_failed:
+    str1=','.join(line)
+    
+    failed_file.write(str1+'\n')
+failed_file.close()
