@@ -1,0 +1,79 @@
+# Part 1: Customer Segmentation
+
+# Load the data and take a look at how it is structured
+import pandas as pd
+
+customer_data = pd.read_csv("customers.csv")
+customer_data
+
+purchase_data = pd.read_csv("purchases.csv")
+purchase_data
+
+# Manipulate the data in more usable format
+bins= [18,35,55,100]
+labels = ['18-34', '35-54', '55+']
+customer_data['age.group'] = pd.cut(customer_data['age'], bins=bins, labels=labels, right=False)
+customer_data
+
+# Melt the purchase data into a three-column data frame (customer.id, purchase.category, spending)
+melted_df=pd.melt(purchase_data,id_vars=['customer.id'],var_name="purchase.category",value_name="spending")
+melted_df
+
+# Merge the data
+df=pd.merge(customer_data,melted_df,on='customer.id')
+df
+
+# Compute and write out some useful summary data
+# Group data by age.group, gender, and purchase.category; calculate average purchase amount
+df_group=df.groupby(['age.group','gender','purchase.category'])['spending'].mean().reset_index()
+
+df_group.to_csv('average_spending_by_demographics.csv',index=False)
+
+------------------------------------------------------------------------------------------------------
+
+# Part 2: Sales analysis
+
+# Load the data and take a look of how it is structured
+sales=pd.read_csv("sales.csv",sep=";")
+sales
+
+regions=pd.read_csv("regions.csv")
+regions
+
+products=pd.read_csv("products.csv",sep=";")
+products
+
+# Remove the dollar sign and convert prices into float format
+products.price = products.price.str.replace('$', '', regex=False).astype(float)
+
+# Merge the sales data frame with the regions data frame
+regions=regions.rename(columns={'region.id':'region'})
+df_sales_regions=pd.merge(regions,sales,on="region")
+df_sales_regions
+
+# Merge the data frame just created with the products data frame
+df_combine=pd.merge(products,df_sales_regions,on=['product.id','product.title'])
+df_combine
+
+# Create a sales column
+import numpy as np
+
+df_combine['sales']=np.multiply(df_combine['quantity'],df_combine['price'])
+df_combine
+
+# Compute and write out summary data
+
+#  What are our top-selling brands (by dollar amount)?
+top_selling_brands=df_combine.groupby(['brand'])['sales'].sum(numeric_only=True).reset_index()
+top_selling_brands=top_selling_brands.sort_values('sales',ascending=False)
+top_selling_brands.to_csv('top_selling_brands.csv',index=False)
+
+# What are our top-selling items (by dollar amount)?
+top_selling_products=df_combine.groupby(['product.id','product.title'])['sales'].sum(numeric_only=True).reset_index()
+top_selling_products=top_selling_products.sort_values('sales',ascending=False)
+top_selling_products.to_csv('top_selling_products',sep=';',index=False)
+
+# What are our top-selling regions (by dollar amount)?
+top_selling_regions=df_combine.groupby(['region'])['sales'].sum(numeric_only=True).reset_index()
+top_selling_regions=top_selling_regions.sort_values('sales',ascending=False)
+top_selling_regions.to_csv('top_selling_regions',index=False)
